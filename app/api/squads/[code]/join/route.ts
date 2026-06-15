@@ -11,22 +11,27 @@ export async function POST(
     const { phone, display_name, contribution_confirmed } = await req.json();
     const code = params.code.toUpperCase();
 
-    if (!phone || !display_name) {
-      return NextResponse.json({ error: "Missing phone or display_name" }, { status: 400 });
+    if (!phone) {
+      return NextResponse.json({ error: "Missing phone" }, { status: 400 });
     }
 
     const { data: squad } = await supabase
       .from("squads").select("*").eq("squad_id", code).single();
 
     if (!squad) return NextResponse.json({ error: "Squad not found" }, { status: 404 });
-    if (squad.status === "drawn" || squad.status === "completed") {
-      return NextResponse.json({ error: "Squad is closed — picks are already done" }, { status: 409 });
-    }
 
     const members = squad.members ?? [];
     if (members.some((m: { phone: string }) => m.phone === phone)) {
       // Existing member re-logging in — return their squad so the client can redirect them
       return NextResponse.json({ ...sanitizeSquad(squad), already_member: true });
+    }
+
+    if (squad.status === "drawn" || squad.status === "completed") {
+      return NextResponse.json({ error: "Squad is closed — picks are already done" }, { status: 409 });
+    }
+
+    if (!display_name) {
+      return NextResponse.json({ error: "Missing display_name" }, { status: 400 });
     }
     if (members.length >= squad.member_count_target) {
       return NextResponse.json({ error: "Squad is full" }, { status: 409 });
