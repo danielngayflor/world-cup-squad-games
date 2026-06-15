@@ -120,7 +120,7 @@ export default function SquadPage() {
   ];
 
   return (
-    <div className="space-y-5">
+    <div className={`flex flex-col gap-4 ${tab === "chat" ? "flex-1 min-h-0" : ""}`}>
       {/* Header */}
       <div className="space-y-1">
         <div className="flex items-center justify-between">
@@ -210,10 +210,12 @@ export default function SquadPage() {
 
       {/* Tab: Chat */}
       {tab === "chat" && (
-        <ChatTab messages={messages} myPhone={myPhone} squadCode={code}
-          senderName={members.find((m) => m.phone === myPhone)?.display_name ?? ""}
-          members={members}
-          onSent={fetchMessages} />
+        <div className="flex-1 min-h-0 flex flex-col">
+          <ChatTab messages={messages} myPhone={myPhone} squadCode={code}
+            senderName={members.find((m) => m.phone === myPhone)?.display_name ?? ""}
+            members={members}
+            onSent={fetchMessages} />
+        </div>
       )}
     </div>
   );
@@ -574,8 +576,9 @@ function ChatTab({ messages, myPhone, squadCode, senderName, members, onSent }: 
   let lastDate = "";
 
   return (
-    <div className="space-y-4">
-      <div className="space-y-1 max-h-[420px] overflow-y-auto pr-1">
+    <div className="flex flex-col flex-1 min-h-0">
+      {/* Messages — fills all available space */}
+      <div className="flex-1 min-h-0 overflow-y-auto space-y-1 pr-1 pb-2">
         {messages.length === 0 && (
           <div className="text-center py-10 text-blue-400/60 text-sm">No messages yet. Say something! 👋</div>
         )}
@@ -644,7 +647,7 @@ function ChatTab({ messages, myPhone, squadCode, senderName, members, onSent }: 
       </div>
 
       {myPhone ? (
-        <div className="space-y-2 border-t border-white/10 pt-3">
+        <div className="space-y-2 border-t border-white/10 pt-3 pb-[env(safe-area-inset-bottom)] flex-shrink-0">
           {sendError && <p className="text-xs text-red-400 text-center">{sendError}</p>}
 
           {/* Reply preview */}

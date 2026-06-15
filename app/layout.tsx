@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -6,10 +6,18 @@ export const metadata: Metadata = {
   description: "Draft 4 teams with your friends and follow them to glory",
 };
 
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: "cover",
+};
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className="min-h-screen text-white relative overflow-x-hidden">
+      <body className="min-h-[100dvh] text-white relative overflow-x-hidden flex flex-col">
         {/* Animated geometric background */}
         <div className="fixed inset-0 overflow-hidden pointer-events-none" style={{ zIndex: 0 }}>
           <div className="geo-shape geo-1" />
@@ -27,14 +35,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </div>
 
         {/* Header */}
-        <header className="relative px-6 py-4 flex items-center gap-3 border-b border-white/10" style={{ zIndex: 10, backdropFilter: "blur(4px)" }}>
+        <header className="relative px-6 py-4 flex items-center gap-3 border-b border-white/10 flex-shrink-0" style={{ zIndex: 10, backdropFilter: "blur(4px)", paddingTop: "max(1rem, env(safe-area-inset-top))", paddingLeft: "max(1.5rem, env(safe-area-inset-left))", paddingRight: "max(1.5rem, env(safe-area-inset-right))" }}>
           <span className="text-2xl">⚽</span>
           <a href="/" className="font-bold text-xl tracking-wide hover:text-blue-300 transition-colors" style={{ letterSpacing: "0.05em" }}>
             World Cup Squad Games
           </a>
         </header>
 
-        <main className="relative max-w-2xl mx-auto px-4 py-8" style={{ zIndex: 10 }}>
+        <main className="relative flex-1 max-w-2xl w-full mx-auto px-4 py-6 flex flex-col" style={{ zIndex: 10 }}>
           {children}
         </main>
       </body>
