@@ -438,6 +438,23 @@ function FixturesTab({ fixtures }: {
 
 // ── CHAT TAB ──────────────────────────────────────────────────────────────────
 
+const MEMBER_COLORS = [
+  { bg: "bg-rose-500",    bubble: "bg-rose-600/80",    text: "text-rose-300",    border: "border-rose-500/50"    },
+  { bg: "bg-amber-500",   bubble: "bg-amber-600/80",   text: "text-amber-300",   border: "border-amber-500/50"   },
+  { bg: "bg-emerald-500", bubble: "bg-emerald-600/80", text: "text-emerald-300", border: "border-emerald-500/50" },
+  { bg: "bg-cyan-500",    bubble: "bg-cyan-600/80",    text: "text-cyan-300",    border: "border-cyan-500/50"    },
+  { bg: "bg-violet-500",  bubble: "bg-violet-600/80",  text: "text-violet-300",  border: "border-violet-500/50"  },
+  { bg: "bg-pink-500",    bubble: "bg-pink-600/80",    text: "text-pink-300",    border: "border-pink-500/50"    },
+  { bg: "bg-orange-500",  bubble: "bg-orange-600/80",  text: "text-orange-300",  border: "border-orange-500/50"  },
+  { bg: "bg-teal-500",    bubble: "bg-teal-600/80",    text: "text-teal-300",    border: "border-teal-500/50"    },
+];
+
+function memberColor(phone: string) {
+  let hash = 0;
+  for (let i = 0; i < phone.length; i++) hash = (hash * 31 + phone.charCodeAt(i)) >>> 0;
+  return MEMBER_COLORS[hash % MEMBER_COLORS.length];
+}
+
 function renderContent(content: string) {
   // Highlight @mentions
   const parts = content.split(/(@\S+)/g);
@@ -564,6 +581,7 @@ function ChatTab({ messages, myPhone, squadCode, senderName, members, onSent }: 
         )}
         {messages.map((msg) => {
           const isMe = msg.sender_phone === myPhone;
+          const color = memberColor(msg.sender_phone);
           const dateLabel = formatDate(msg.created_at);
           const showDate = dateLabel !== lastDate;
           lastDate = dateLabel;
@@ -575,22 +593,22 @@ function ChatTab({ messages, myPhone, squadCode, senderName, members, onSent }: 
                 <div className="text-center text-xs text-blue-400/50 py-2">{dateLabel}</div>
               )}
               <div className={`group flex gap-2 ${isMe ? "flex-row-reverse" : ""}`}>
-                <div className={`w-7 h-7 flex-shrink-0 rounded-full flex items-center justify-center text-xs font-bold mt-1 ${isMe ? "bg-blue-600" : "bg-white/15"}`}>
+                <div className={`w-7 h-7 flex-shrink-0 rounded-full flex items-center justify-center text-xs font-bold mt-1 text-white ${color.bg}`}>
                   {msg.sender_name.charAt(0).toUpperCase()}
                 </div>
                 <div className={`max-w-[75%] space-y-1 ${isMe ? "items-end" : "items-start"} flex flex-col`}>
-                  {!isMe && <span className="text-xs text-blue-400/70 px-1">{msg.sender_name}</span>}
+                  {!isMe && <span className={`text-xs px-1 font-semibold ${color.text}`}>{msg.sender_name}</span>}
 
                   {/* Quoted reply */}
                   {quoted && (
-                    <div className={`text-xs px-3 py-1.5 rounded-xl border-l-2 border-blue-400 bg-white/5 text-blue-300/80 max-w-full truncate`}>
+                    <div className={`text-xs px-3 py-1.5 rounded-xl border-l-2 bg-white/5 max-w-full truncate ${memberColor(quoted.sender_phone).border} ${memberColor(quoted.sender_phone).text}`}>
                       <span className="font-semibold">{quoted.sender_name}: </span>
                       {quoted.content ?? "📎 Media"}
                     </div>
                   )}
 
                   {msg.content && (
-                    <div className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${isMe ? "bg-blue-600 rounded-tr-sm" : "bg-white/10 rounded-tl-sm"}`}>
+                    <div className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed text-white ${isMe ? `${color.bubble} rounded-tr-sm` : "bg-white/10 rounded-tl-sm"}`}>
                       {renderContent(msg.content)}
                     </div>
                   )}
