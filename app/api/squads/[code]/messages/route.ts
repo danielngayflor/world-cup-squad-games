@@ -28,13 +28,14 @@ export async function POST(
 ) {
   try {
     checkEnv();
-    const { sender_phone, sender_name, content, image_url } = await req.json();
+    const { sender_phone, sender_name, content, image_url, reply_to_id } = await req.json();
     const code = params.code.toUpperCase();
     if (!sender_phone || (!content && !image_url)) {
       return NextResponse.json({ error: "Missing fields" }, { status: 400 });
     }
     const { data, error } = await supabase.from("messages").insert({
       squad_id: code, sender_phone, sender_name, content, image_url,
+      ...(reply_to_id ? { reply_to_id } : {}),
     }).select().single();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json(data);

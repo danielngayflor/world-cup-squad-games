@@ -29,6 +29,7 @@ type Message = {
   sender_name: string;
   content: string | null;
   image_url: string | null;
+  reply_to_id: string | null;
   created_at: string;
 };
 
@@ -211,6 +212,7 @@ export default function SquadPage() {
       {tab === "chat" && (
         <ChatTab messages={messages} myPhone={myPhone} squadCode={code}
           senderName={members.find((m) => m.phone === myPhone)?.display_name ?? ""}
+          members={members}
           onSent={fetchMessages} />
       )}
     </div>
@@ -436,19 +438,54 @@ function FixturesTab({ fixtures }: {
 
 // ── CHAT TAB ──────────────────────────────────────────────────────────────────
 
-function ChatTab({ messages, myPhone, squadCode, senderName, onSent }: {
-  messages: Message[]; myPhone: string; squadCode: string; senderName: string; onSent: () => void;
+function renderContent(content: string) {
+  // Highlight @mentions
+  const parts = content.split(/(@\S+)/g);
+  return parts.map((part, i) =>
+    part.startsWith("@")
+      ? <span key={i} className="text-yellow-300 font-semibold">{part}</span>
+      : <span key={i}>{part}</span>
+  );
+}
+
+function ChatTab({ messages, myPhone, squadCode, senderName, members, onSent }: {
+  messages: Message[]; myPhone: string; squadCode: string; senderName: string;
+  members: { phone: string; display_name: string }[]; onSent: () => void;
 }) {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [sendError, setSendError] = useState("");
+  const [replyTo, setReplyTo] = useState<Message | null>(null);
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // Detect @ in input
+  function handleTextChange(val: string) {
+    setText(val);
+    const match = val.match(/@(\w*)$/);
+    setMentionQuery(match ? match[1] : null);
+  }
+
+  function insertMention(name: string) {
+    const newText = text.replace(/@\w*$/, `@${name.replace(/\s+/g, "")} `);
+    setText(newText);
+    setMentionQuery(null);
+    inputRef.current?.focus();
+  }
+
+  const mentionMatches = mentionQuery !== null
+    ? members.filter((m) =>
+        m.phone !== myPhone &&
+        m.display_name.toLowerCase().includes(mentionQuery.toLowerCase())
+      )
+    : [];
 
   async function uploadFile(file: File): Promise<string | null> {
     const ext = file.name.split(".").pop();
@@ -470,11 +507,18 @@ function ChatTab({ messages, myPhone, squadCode, senderName, onSent }: {
       const res = await fetch(`/api/squads/${squadCode}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sender_phone: myPhone, sender_name: senderName || "Anonymous", content, image_url }),
+        body: JSON.stringify({
+          sender_phone: myPhone,
+          sender_name: senderName || "Anonymous",
+          content,
+          image_url,
+          reply_to_id: replyTo?.id ?? null,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to send");
       setText("");
+      setReplyTo(null);
       await onSent();
     } catch (err: unknown) {
       setSendError(err instanceof Error ? err.message : "Failed to send");
@@ -496,6 +540,8 @@ function ChatTab({ messages, myPhone, squadCode, senderName, onSent }: {
     if (url) await sendMessage(url);
     if (fileRef.current) fileRef.current.value = "";
   }
+
+  const msgMap = Object.fromEntries(messages.map((m) => [m.id, m]));
 
   function formatTime(iso: string) {
     return new Date(iso).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
@@ -521,20 +567,31 @@ function ChatTab({ messages, myPhone, squadCode, senderName, onSent }: {
           const dateLabel = formatDate(msg.created_at);
           const showDate = dateLabel !== lastDate;
           lastDate = dateLabel;
+          const quoted = msg.reply_to_id ? msgMap[msg.reply_to_id] : null;
+
           return (
             <div key={msg.id}>
               {showDate && (
                 <div className="text-center text-xs text-blue-400/50 py-2">{dateLabel}</div>
               )}
-              <div className={`flex gap-2 ${isMe ? "flex-row-reverse" : ""}`}>
+              <div className={`group flex gap-2 ${isMe ? "flex-row-reverse" : ""}`}>
                 <div className={`w-7 h-7 flex-shrink-0 rounded-full flex items-center justify-center text-xs font-bold mt-1 ${isMe ? "bg-blue-600" : "bg-white/15"}`}>
                   {msg.sender_name.charAt(0).toUpperCase()}
                 </div>
                 <div className={`max-w-[75%] space-y-1 ${isMe ? "items-end" : "items-start"} flex flex-col`}>
                   {!isMe && <span className="text-xs text-blue-400/70 px-1">{msg.sender_name}</span>}
+
+                  {/* Quoted reply */}
+                  {quoted && (
+                    <div className={`text-xs px-3 py-1.5 rounded-xl border-l-2 border-blue-400 bg-white/5 text-blue-300/80 max-w-full truncate`}>
+                      <span className="font-semibold">{quoted.sender_name}: </span>
+                      {quoted.content ?? "📎 Media"}
+                    </div>
+                  )}
+
                   {msg.content && (
                     <div className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${isMe ? "bg-blue-600 rounded-tr-sm" : "bg-white/10 rounded-tl-sm"}`}>
-                      {msg.content}
+                      {renderContent(msg.content)}
                     </div>
                   )}
                   {msg.image_url && isVideo(msg.image_url) && (
@@ -549,7 +606,17 @@ function ChatTab({ messages, myPhone, squadCode, senderName, onSent }: {
                       <img src={msg.image_url} alt="shared" className="max-w-full rounded-2xl max-h-64 object-cover border border-white/10" />
                     </a>
                   )}
-                  <span className="text-xs text-blue-400/40 px-1">{formatTime(msg.created_at)}</span>
+                  <div className={`flex items-center gap-2 px-1 ${isMe ? "flex-row-reverse" : ""}`}>
+                    <span className="text-xs text-blue-400/40">{formatTime(msg.created_at)}</span>
+                    {myPhone && (
+                      <button
+                        onClick={() => { setReplyTo(msg); inputRef.current?.focus(); }}
+                        className="text-xs text-blue-400/0 group-hover:text-blue-400/50 hover:!text-blue-300 transition-colors"
+                      >
+                        ↩ Reply
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -561,14 +628,36 @@ function ChatTab({ messages, myPhone, squadCode, senderName, onSent }: {
       {myPhone ? (
         <div className="space-y-2 border-t border-white/10 pt-3">
           {sendError && <p className="text-xs text-red-400 text-center">{sendError}</p>}
+
+          {/* Reply preview */}
+          {replyTo && (
+            <div className="flex items-center gap-2 bg-white/5 border border-blue-400/30 rounded-xl px-3 py-2">
+              <div className="flex-1 text-xs text-blue-300 truncate">
+                <span className="font-semibold">{replyTo.sender_name}: </span>
+                {replyTo.content ?? "📎 Media"}
+              </div>
+              <button onClick={() => setReplyTo(null)} className="text-blue-400/60 hover:text-blue-300 text-sm">✕</button>
+            </div>
+          )}
+
+          {/* @mention picker */}
+          {mentionMatches.length > 0 && (
+            <div className="bg-blue-950 border border-white/20 rounded-xl overflow-hidden">
+              {mentionMatches.map((m) => (
+                <button
+                  key={m.phone}
+                  type="button"
+                  onClick={() => insertMention(m.display_name)}
+                  className="w-full text-left px-4 py-2 text-sm hover:bg-white/10 transition-colors"
+                >
+                  <span className="font-semibold">{m.display_name}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="flex gap-2">
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/*,video/*,audio/*"
-              className="hidden"
-              onChange={handleFileChange}
-            />
+            <input ref={fileRef} type="file" accept="image/*,video/*,audio/*" className="hidden" onChange={handleFileChange} />
             <button
               type="button"
               onClick={() => fileRef.current?.click()}
@@ -579,9 +668,10 @@ function ChatTab({ messages, myPhone, squadCode, senderName, onSent }: {
               {uploading ? <span className="animate-spin inline-block">⟳</span> : "📎"}
             </button>
             <input
+              ref={inputRef}
               value={text}
-              onChange={(e) => setText(e.target.value)}
-              placeholder="Say something…"
+              onChange={(e) => handleTextChange(e.target.value)}
+              placeholder="Say something… or type @ to tag"
               className="flex-1 bg-white/10 border border-white/20 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-blue-400"
             />
             <button
