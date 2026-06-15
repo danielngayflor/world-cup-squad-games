@@ -440,43 +440,78 @@ function ChatTab({ messages, myPhone, squadCode, senderName, onSent }: {
   messages: Message[]; myPhone: string; squadCode: string; senderName: string; onSent: () => void;
 }) {
   const [text, setText] = useState("");
-  const [imageUrl, setImageUrl] = useState("");
   const [sending, setSending] = useState(false);
-  const [showImg, setShowImg] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [sendError, setSendError] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  async function send(e: React.FormEvent) {
-    e.preventDefault();
-    if (!text.trim() && !imageUrl.trim()) return;
+  async function uploadFile(file: File): Promise<string | null> {
+    const ext = file.name.split(".").pop();
+    const path = `${squadCode}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+    const { supabase: sb } = await import("@/lib/supabase");
+    const { error } = await sb.storage.from("chat-media").upload(path, file, { upsert: false });
+    if (error) { setSendError(`Upload failed: ${error.message}`); return null; }
+    const { data } = sb.storage.from("chat-media").getPublicUrl(path);
+    return data.publicUrl;
+  }
+
+  async function sendMessage(mediaUrl?: string) {
+    const content = text.trim() || null;
+    const image_url = mediaUrl ?? null;
+    if (!content && !image_url) return;
+    setSendError("");
     setSending(true);
-    await fetch(`/api/squads/${squadCode}/messages`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sender_phone: myPhone, sender_name: senderName || "Anonymous", content: text.trim() || null, image_url: imageUrl.trim() || null }),
-    });
-    setText(""); setImageUrl(""); setShowImg(false);
-    await onSent();
-    setSending(false);
+    try {
+      const res = await fetch(`/api/squads/${squadCode}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sender_phone: myPhone, sender_name: senderName || "Anonymous", content, image_url }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to send");
+      setText("");
+      await onSent();
+    } catch (err: unknown) {
+      setSendError(err instanceof Error ? err.message : "Failed to send");
+    } finally { setSending(false); }
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    await sendMessage();
+  }
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setSendError("");
+    const url = await uploadFile(file);
+    setUploading(false);
+    if (url) await sendMessage(url);
+    if (fileRef.current) fileRef.current.value = "";
   }
 
   function formatTime(iso: string) {
-    const d = new Date(iso);
-    return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+    return new Date(iso).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
   }
 
   function formatDate(iso: string) {
     return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
   }
 
+  function isVideo(url: string) { return /\.(mp4|mov|webm|ogg)(\?|$)/i.test(url); }
+  function isAudio(url: string) { return /\.(mp3|wav|ogg|m4a|aac)(\?|$)/i.test(url); }
+
   let lastDate = "";
 
   return (
     <div className="space-y-4">
-      {/* Messages */}
       <div className="space-y-1 max-h-[420px] overflow-y-auto pr-1">
         {messages.length === 0 && (
           <div className="text-center py-10 text-blue-400/60 text-sm">No messages yet. Say something! 👋</div>
@@ -502,10 +537,16 @@ function ChatTab({ messages, myPhone, squadCode, senderName, onSent }: {
                       {msg.content}
                     </div>
                   )}
-                  {msg.image_url && (
+                  {msg.image_url && isVideo(msg.image_url) && (
+                    <video src={msg.image_url} controls className="max-w-full rounded-2xl max-h-64 border border-white/10" />
+                  )}
+                  {msg.image_url && isAudio(msg.image_url) && (
+                    <audio src={msg.image_url} controls className="w-48 rounded-xl" />
+                  )}
+                  {msg.image_url && !isVideo(msg.image_url) && !isAudio(msg.image_url) && (
                     <a href={msg.image_url} target="_blank" rel="noopener noreferrer">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={msg.image_url} alt="shared" className="max-w-full rounded-2xl max-h-48 object-cover border border-white/10" />
+                      <img src={msg.image_url} alt="shared" className="max-w-full rounded-2xl max-h-64 object-cover border border-white/10" />
                     </a>
                   )}
                   <span className="text-xs text-blue-400/40 px-1">{formatTime(msg.created_at)}</span>
@@ -517,26 +558,41 @@ function ChatTab({ messages, myPhone, squadCode, senderName, onSent }: {
         <div ref={bottomRef} />
       </div>
 
-      {/* Input */}
       {myPhone ? (
-        <form onSubmit={send} className="space-y-2 border-t border-white/10 pt-3">
-          {showImg && (
-            <input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="Paste image URL…"
-              className="w-full bg-white/10 border border-white/20 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-400" />
-          )}
-          <div className="flex gap-2">
-            <button type="button" onClick={() => setShowImg(!showImg)} title="Share image"
-              className={`rounded-xl px-3 py-2 text-lg transition-colors ${showImg ? "bg-blue-600" : "bg-white/10 hover:bg-white/20"}`}>
-              🖼️
+        <div className="space-y-2 border-t border-white/10 pt-3">
+          {sendError && <p className="text-xs text-red-400 text-center">{sendError}</p>}
+          <form onSubmit={handleSubmit} className="flex gap-2">
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*,video/*,audio/*"
+              className="hidden"
+              onChange={handleFileChange}
+            />
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              disabled={uploading || sending}
+              title="Attach photo, video, or audio"
+              className="rounded-xl px-3 py-2 text-lg bg-white/10 hover:bg-white/20 disabled:opacity-40 transition-colors"
+            >
+              {uploading ? <span className="animate-spin inline-block">⟳</span> : "📎"}
             </button>
-            <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Say something…"
-              className="flex-1 bg-white/10 border border-white/20 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-blue-400" />
-            <button type="submit" disabled={sending || (!text.trim() && !imageUrl.trim())}
-              className="bg-blue-600 hover:bg-blue-500 disabled:opacity-40 rounded-xl px-4 py-2 text-sm font-bold transition-colors">
+            <input
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder="Say something…"
+              className="flex-1 bg-white/10 border border-white/20 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-blue-400"
+            />
+            <button
+              type="submit"
+              disabled={sending || uploading || !text.trim()}
+              className="bg-blue-600 hover:bg-blue-500 disabled:opacity-40 rounded-xl px-4 py-2 text-sm font-bold transition-colors"
+            >
               {sending ? "…" : "Send"}
             </button>
-          </div>
-        </form>
+          </form>
+        </div>
       ) : (
         <p className="text-center text-sm text-blue-400/60">Join the squad to chat.</p>
       )}
